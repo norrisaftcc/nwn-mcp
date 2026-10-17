@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { requireIndex } from "../module-loader.js";
+import { requireIndex, buildResmanOptions } from "../module-loader.js";
+import { resmanGrep } from "../nim-tools.js";
 import { numParam, optNumParam, toI } from "../util/params.js";
 import { getFieldStr, getFieldNum, getFieldLocStr, getFieldList } from "../types/gff.js";
 import type { GffObj, GffDocument } from "../types/gff.js";
@@ -250,15 +251,28 @@ export function registerAnalysisTools(server: McpServer): void {
       const errors: Array<{ type: string; message: string; resource?: string }> = [];
       const warnings: Array<{ type: string; message: string; resource?: string }> = [];
 
+      // Scripts not in the module may still come from the base game, HAKs or override
+      const resman = await buildResmanOptions(index);
+      const inResman = async (scriptResref: string): Promise<boolean> => {
+        try {
+          const out = await resmanGrep({ ...resman, pattern: scriptResref });
+          const names = new Set([`${scriptResref}.ncs`, `${scriptResref}.nss`]);
+          return out.split(/\s+/).some(tok => names.has(tok.toLowerCase().replace(/^.*[\\/]/, "")));
+        } catch {
+          return false;  // resman unavailable: fall back to reporting it missing
+        }
+      };
+
       // Check script references: verify .nss or .ncs exists
       for (const [scriptResref, usages] of index.scripts) {
         const hasSource = index.resources.has(`${scriptResref}.nss`);
         const hasCompiled = index.resources.has(`${scriptResref}.ncs`);
+        if (!hasSource && !hasCompiled && await inResman(scriptResref.toLowerCase())) continue;
         if (!hasSource && !hasCompiled) {
           for (const usage of usages) {
             errors.push({
               type: "missing_script",
-              message: `Script "${scriptResref}" referenced in ${usage.resourceFile} (${usage.usageType}) but not found in module`,
+              message: `Script "${scriptResref}" referenced in ${usage.resourceFile} (${usage.usageType}) but not found in module, HAKs, or base game`,
               resource: usage.resourceFile,
             });
           }

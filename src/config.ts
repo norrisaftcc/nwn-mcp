@@ -16,7 +16,7 @@ export const NWN_FOLDER_USER = process.env.NWN_FOLDER_USER || "";
 export const TEMP_BASE = process.env.MCP_FOLDER_TEMP || path.join(os.tmpdir(), "nwn-mcp");
 
 export function nimtool(name: string): string {
-  return path.join(NIM_FOLDER_NWTOOLS, `${name}.exe`);
+  return path.join(NIM_FOLDER_NWTOOLS, process.platform === "win32" ? `${name}.exe` : name);
 }
 
 // GFF file extensions that we can parse to JSON
