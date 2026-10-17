@@ -74,3 +74,6 @@ Backup: `modules/the-weeping-lantern.pre-polish.mod`. Repacked to `the-weeping-l
 2. **Lantern item type.** `weeping_lantern` changed from BaseItem 40 (Kama, a weapon) to 24 (Misc Small, non-equippable). Tag/resref unchanged. The copies embedded in `garrick_dunn.utc` and in the placed Garrick in `sealedvault.git` carried their own BaseItem 40 and were updated too (a blueprint-only change would have left the boss with a Kama). After reload, `get_creature_details` for `garrick_dunn` shows `weeping_lantern`, baseItem 24. The item's model part and icon are the Misc Small defaults, so it will show a generic icon.
 3. Verification: `verify_quest_completability` still passes for both quests; scripts that test the lantern use the tag, which is unchanged (`c_qlant_has`, `a_qlant_s4`). Not live-tested (Pip, store and vault gate skipped as requested).
 4. `validate_module`: see the number in the session report below; same base-game false positives as before.
+
+## Open items
+Tracked in https://github.com/norrisaftcc/game-nwn-menhir/issues/61 (replay of the final module, Pip, Corwin's store, vault gate wording, 200 vs 150 GP, WASD-camera rerun, nwn-mcp integration tests).
