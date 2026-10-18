@@ -11,7 +11,7 @@ Sub-skill of `/create-adventure`. Reads the plot section of `adventure.md`, buil
 ## Prerequisites
 
 - `adventure.md` must exist in the MCP temp directory (`$MCP_FOLDER_TEMP`, defaults to `$TEMP/nwn-mcp` or `/tmp/nwn-mcp`) and contain a completed `## Plot` section. All sub-skills read from and append to this shared file.
-- A module must be loaded. If none is loaded, call `load_module` using the module name from `adventure.md`.
+- A module must be loaded. If none is loaded, call `load_module` using the module name from `adventure.md`; it auto-routes when a Nasher project is detected.
 
 ## Workflow
 
@@ -293,7 +293,7 @@ Append an `## Areas` section to `adventure.md` with:
 
 This data is used by downstream skills (`/adventure-environment`, `/adventure-actors`, `/adventure-quests`, `/adventure-challenges`, `/adventure-affordances`) to place content correctly.
 
-Repack the module with `repack_module`.
+Save/sync the result. For standalone `.mod` workflows, call `repack_module`. For Nasher workflows, call `sync_nasher_source` at the end if any write response lacked `nasherSync` or if you are unsure; call `repack_module` only when a packed `.mod` is needed.
 
 ---
 

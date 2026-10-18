@@ -15,6 +15,8 @@ import fs from "fs/promises";
 
 import { gffToJson, jsonToGff, resmanExtractToJson } from "../nim-tools.js";
 import type { ResmanOptions } from "../nim-tools.js";
+import type { NasherSyncResult } from "../nasher-sync.js";
+import { syncNasherSourceForIndex } from "../nasher-sync.js";
 import { invalidateTagToAreaCache } from "../tools/tileset-tools.js";
 import { getFieldList } from "../types/gff.js";
 import type { GffDocument, GffObj } from "../types/gff.js";
@@ -64,7 +66,7 @@ export function getGitDoc(index: ModuleIndex, areaResref: string): { doc: GffDoc
 }
 
 /** Write GIT back to disk. Invalidates derived caches. */
-export async function writeBackGit(index: ModuleIndex, areaResref: string, doc: GffDocument): Promise<void> {
+export async function writeBackGit(index: ModuleIndex, areaResref: string, doc: GffDocument): Promise<NasherSyncResult | undefined> {
   const key = `${areaResref.toLowerCase()}.git`;
   const entry = index.resources.get(key);
   if (entry) {
@@ -73,6 +75,7 @@ export async function writeBackGit(index: ModuleIndex, areaResref: string, doc: 
   }
   // Sync the GIC file so the toolset can see all placed objects.
   await syncGic(index, areaResref, doc);
+  return syncNasherSourceForIndex(index, { reason: `writeBackGit:${areaResref.toLowerCase()}` });
 }
 
 /**

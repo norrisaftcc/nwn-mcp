@@ -3,30 +3,32 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import path from "path";
 import fs from "fs/promises";
 import { loadModule, requireIndex } from "../module-loader.js";
+import type { NasherDetection } from "../nasher-adapter.js";
+import { detectNasherProject, resolveNasherWorkspaceRoot } from "../nasher-adapter.js";
+import { loadNasherWorkspace } from "../nasher-workspace.js";
 import { gffToJson, readTextFile, disassembleNcs } from "../nim-tools.js";
 import { GFF_EXTENSIONS, NWN_FOLDER_USER } from "../config.js";
 import { getFieldLocStr, getFieldStr, getFieldNum, getFieldList } from "../types/gff.js";
 import type { GffObj } from "../types/gff.js";
 
+const NASHER_MODULE_EXTENSIONS = new Set([".mod", ".hak", ".erf", ".nwm"]);
+const NASHER_AUTO_ROUTE_REMINDER =
+  "load_module detected a Nasher project and automatically used load_nasher_workspace. Normal MCP tools edit .nasher/cache/<target>; supported write tools automatically sync those edits back to Nasher text sources. sync_nasher_source remains available for an explicit rerun.";
+
 export function registerCoreReadTools(server: McpServer): void {
 
   server.tool(
     "load_module",
-    "Load and index a NWN module (.mod) file. Must be called before using other tools. If just a filename is given (e.g., 'mymod.mod'), it is resolved from the NWN_FOLDER_USER/modules/ directory.",
-    { modPath: z.string().describe("Module filename (e.g., 'mymod.mod') or absolute path") },
+    "Load and index a NWN module (.mod) file. Must be called before using other tools. If a Nasher project is detected, automatically routes through load_nasher_workspace and returns a reminder. If just a filename is given (e.g., 'mymod.mod'), it is resolved from the NWN_FOLDER_USER/modules/ directory.",
+    { modPath: z.string().describe("Module filename (e.g., 'mymod.mod'), Nasher target, or absolute path") },
     { idempotentHint: true },
     async ({ modPath }) => {
-      // Resolve relative names from NWN_FOLDER_USER/modules/
-      let resolvedPath = modPath;
-      if (!path.isAbsolute(modPath) && NWN_FOLDER_USER) {
-        const candidate = path.join(NWN_FOLDER_USER, "modules", modPath);
-        try {
-          await fs.access(candidate);
-          resolvedPath = candidate;
-        } catch {
-          // Fall through — will fail with a clear error from loadModule
-        }
+      const autoRouted = await maybeLoadNasherWorkspaceFromLoadModule(modPath);
+      if (autoRouted) {
+        return { content: [{ type: "text", text: JSON.stringify(autoRouted, null, 2) }] };
       }
+
+      const resolvedPath = await resolveStandaloneModulePath(modPath);
       const index = await loadModule(resolvedPath);
       const typeCounts: Record<string, number> = {};
       for (const entry of index.resources.values()) {
@@ -229,6 +231,160 @@ export function registerCoreReadTools(server: McpServer): void {
       return { content: [{ type: "text", text: JSON.stringify(results.slice(0, 100), null, 2) }] };
     }
   );
+}
+
+async function maybeLoadNasherWorkspaceFromLoadModule(modPath: string): Promise<Record<string, unknown> | null> {
+  const explicitRoot = await findNearestNasherRootForInput(modPath);
+  const explicitDetection = explicitRoot ? await detectNasherProject(explicitRoot) : undefined;
+  if (explicitDetection?.hasConfig) {
+    return loadNasherWorkspace({
+      workspaceRoot: explicitDetection.workspaceRoot,
+      target: resolveNasherTargetFromModulePath(modPath, explicitDetection),
+      autoRouted: true,
+      entrypoint: "load_module",
+      reminders: [NASHER_AUTO_ROUTE_REMINDER],
+      detection: explicitDetection,
+    });
+  }
+
+  const defaultRoot = await findNearestNasherRoot(resolveNasherWorkspaceRoot());
+  if (!defaultRoot) {
+    return null;
+  }
+
+  const detection = await detectNasherProject(defaultRoot);
+  if (isModulePathOutsideWorkspace(modPath, detection.workspaceRoot)) {
+    return null;
+  }
+
+  // A bare name that matches no Nasher target is a standalone module; let the
+  // standalone loader resolve it (NWN_FOLDER_USER/modules) instead of guessing a target.
+  const target = resolveNasherTargetFromModulePath(modPath, detection);
+  if (!hasPathSeparator(modPath.trim()) && !detection.targets.some((t) => t.name === target)) {
+    return null;
+  }
+
+  return loadNasherWorkspace({
+    workspaceRoot: detection.workspaceRoot,
+    target,
+    autoRouted: true,
+    entrypoint: "load_module",
+    reminders: [NASHER_AUTO_ROUTE_REMINDER],
+    detection,
+  });
+}
+
+async function resolveStandaloneModulePath(modPath: string): Promise<string> {
+  if (!path.isAbsolute(modPath) && NWN_FOLDER_USER) {
+    const candidate = path.join(NWN_FOLDER_USER, "modules", modPath);
+    try {
+      await fs.access(candidate);
+      return candidate;
+    } catch {
+      // Fall through: loadModule will report a clear error for the original path.
+    }
+  }
+  return modPath;
+}
+
+async function findNearestNasherRootForInput(modPath: string): Promise<string | undefined> {
+  if (!path.isAbsolute(modPath) && !hasPathSeparator(modPath)) {
+    return undefined;
+  }
+
+  const startPath = path.resolve(modPath);
+  return findNearestNasherRoot(path.extname(startPath) ? path.dirname(startPath) : startPath);
+}
+
+async function findNearestNasherRoot(startDir: string): Promise<string | undefined> {
+  let current = path.resolve(startDir);
+  while (true) {
+    try {
+      await fs.access(path.join(current, "nasher.cfg"));
+      return current;
+    } catch {
+      // Keep walking toward the drive root.
+    }
+
+    const parent = path.dirname(current);
+    if (parent === current) return undefined;
+    current = parent;
+  }
+}
+
+function resolveNasherTargetFromModulePath(modPath: string, detection: NasherDetection): string | undefined {
+  const trimmed = modPath.trim();
+  if (!trimmed) return undefined;
+
+  const extension = path.extname(trimmed).toLowerCase();
+  const absoluteCandidates = [
+    path.isAbsolute(trimmed) ? path.resolve(trimmed) : undefined,
+    path.resolve(detection.workspaceRoot, trimmed),
+  ].filter((candidate): candidate is string => Boolean(candidate));
+
+  for (const target of detection.targets) {
+    if (target.targetFile && absoluteCandidates.some((candidate) => samePath(candidate, target.targetFile as string))) {
+      return target.name;
+    }
+    if (
+      target.file &&
+      absoluteCandidates.some((candidate) =>
+        samePath(candidate, path.resolve(detection.workspaceRoot, target.file as string)),
+      )
+    ) {
+      return target.name;
+    }
+    if (target.file && normalizeNasherPath(target.file) === normalizeNasherPath(trimmed)) {
+      return target.name;
+    }
+  }
+
+  const candidateName = NASHER_MODULE_EXTENSIONS.has(extension)
+    ? path.basename(trimmed, extension)
+    : path.basename(trimmed);
+  const matchingTargetFile = detection.targets.find((target) => {
+    const targetFile = target.targetFile || target.file;
+    if (!targetFile) return false;
+
+    const targetExtension = path.extname(targetFile).toLowerCase();
+    const targetBaseName = NASHER_MODULE_EXTENSIONS.has(targetExtension)
+      ? path.basename(targetFile, targetExtension)
+      : path.basename(targetFile);
+    return targetBaseName.toLowerCase() === candidateName.toLowerCase();
+  });
+  if (matchingTargetFile) return matchingTargetFile.name;
+
+  const matchingTarget = detection.targets.find((target) => target.name.toLowerCase() === candidateName.toLowerCase());
+  return matchingTarget?.name || candidateName || undefined;
+}
+
+function isModulePathOutsideWorkspace(modPath: string, workspaceRoot: string): boolean {
+  const trimmed = modPath.trim();
+  if (!trimmed) return false;
+  if (path.isAbsolute(trimmed)) {
+    return !isPathInside(path.resolve(trimmed), workspaceRoot);
+  }
+  if (!hasPathSeparator(trimmed)) {
+    return false;
+  }
+  return !isPathInside(path.resolve(workspaceRoot, trimmed), workspaceRoot);
+}
+
+function isPathInside(filePath: string, parentPath: string): boolean {
+  const relative = path.relative(path.resolve(parentPath), path.resolve(filePath));
+  return relative === "" || (!!relative && !relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+function samePath(left: string, right: string): boolean {
+  return path.resolve(left).toLowerCase() === path.resolve(right).toLowerCase();
+}
+
+function normalizeNasherPath(value: string): string {
+  return value.replace(/\\/g, "/").toLowerCase();
+}
+
+function hasPathSeparator(value: string): boolean {
+  return value.includes("/") || value.includes("\\");
 }
 
 function searchGffFields(

@@ -14,6 +14,7 @@ import path from "path";
 import fs from "fs/promises";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { requireIndex, buildResmanOptions } from "../module-loader.js";
+import { syncNasherSourceForIndex } from "../nasher-sync.js";
 import { jsonToGff } from "../nim-tools.js";
 import { getTilesetInfo } from "../util/tileset.js";
 import { validateTilePlacement, findDefaultTile } from "../util/tile-solver.js";
@@ -220,6 +221,8 @@ export function registerPaintTools(server: McpServer): void {
         }
       }
 
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "create_area" });
+
       return {
         content: [{
           type: "text",
@@ -236,6 +239,7 @@ export function registerPaintTools(server: McpServer): void {
               terrain: defaultTerrain || tileset.defaultTerrain,
             },
             totalTiles: width * height,
+            ...(nasherSync ? { nasherSync } : {}),
           }, null, 2),
         }],
       };
@@ -303,6 +307,11 @@ export function registerPaintTools(server: McpServer): void {
       index.areas.delete(areaResref);
       index.creatures = index.creatures.filter(c => c.area !== areaResref);
 
+      const nasherSync = await syncNasherSourceForIndex(index, {
+        reason: "delete_area",
+        removeDeleted: true,
+      });
+
       return {
         content: [{
           type: "text",
@@ -310,6 +319,7 @@ export function registerPaintTools(server: McpServer): void {
             success: true,
             deleted: { resref: areaResref, name: areaName },
             remainingAreas: index.areas.size,
+            ...(nasherSync ? { nasherSync } : {}),
           }, null, 2),
         }],
       };
@@ -398,10 +408,12 @@ export function registerPaintTools(server: McpServer): void {
         await jsonToGff(areDoc, areEntry.filePath);
       }
 
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "paint_tiles" });
+
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({ success: true, area, placements: results }, null, 2),
+          text: JSON.stringify({ success: true, area, placements: results, ...(nasherSync ? { nasherSync } : {}) }, null, 2),
         }],
       };
     },
@@ -526,6 +538,8 @@ export function registerPaintTools(server: McpServer): void {
         }
       }
 
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "paint_group" });
+
       return {
         content: [{
           type: "text",
@@ -538,6 +552,7 @@ export function registerPaintTools(server: McpServer): void {
             tilesPlaced: placements.length,
             tileMaterials,
             warnings,
+            ...(nasherSync ? { nasherSync } : {}),
           }, null, 2),
         }],
       };
@@ -672,6 +687,8 @@ export function registerPaintTools(server: McpServer): void {
         return { content: [{ type: "text", text: "No properties specified to change." }] };
       }
 
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "set_area_properties" });
+
       return {
         content: [{
           type: "text",
@@ -679,6 +696,7 @@ export function registerPaintTools(server: McpServer): void {
             success: true,
             area,
             changes,
+            ...(nasherSync ? { nasherSync } : {}),
           }, null, 2),
         }],
       };
