@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { requireIndex } from "../module-loader.js";
+import { syncNasherSourceForIndex } from "../nasher-sync.js";
 import { jsonToGff } from "../nim-tools.js";
 import { getFieldStr, getFieldNum, getFieldLocStr, getFieldList, setField } from "../types/gff.js";
 import type { GffObj } from "../types/gff.js";
@@ -246,11 +247,12 @@ export function registerAreaTools(server: McpServer): void {
       }
 
       await jsonToGff(areDoc, areEntry.filePath);
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "set_area_scripts" });
 
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({ success: true, area, changes }, null, 2),
+          text: JSON.stringify({ success: true, area, changes, ...(nasherSync ? { nasherSync } : {}) }, null, 2),
         }],
       };
     },
@@ -305,11 +307,12 @@ export function registerAreaTools(server: McpServer): void {
       }
 
       await jsonToGff(ifoDoc, ifoEntry.filePath);
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "set_module_scripts" });
 
       return {
         content: [{
           type: "text",
-          text: JSON.stringify({ success: true, changes }, null, 2),
+          text: JSON.stringify({ success: true, changes, ...(nasherSync ? { nasherSync } : {}) }, null, 2),
         }],
       };
     },

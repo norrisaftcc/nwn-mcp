@@ -22,6 +22,7 @@ import { numParam, optNumParam, toF, toI } from "../util/params.js";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { requireIndex, buildResmanOptions } from "../module-loader.js";
 import { GIT_STRUCT_ID } from "../config.js";
+import { syncNasherSourceForIndex } from "../nasher-sync.js";
 import { resolveBlueprint, getGitDoc, writeBackGit, updateAreaCounts } from "../util/git-helpers.js";
 import { getFieldStr, getFieldNum, getFieldList, setField, setFieldNum } from "../types/gff.js";
 import type { GffObj, GffDocument } from "../types/gff.js";
@@ -281,7 +282,7 @@ export function registerAdventureTools(server: McpServer): void {
       snapshotGitForUndo(gitDocA, areaA, "adventure_create_transition", `Place light ${lightATag} + waypoint ${wpATag}`);
       getFieldList(gitA, "Placeable List").push(lightA);
       getFieldList(gitA, "WaypointList").push(wpA);
-      await writeBackGit(index, areaA, gitDocA);
+      const nasherSyncA = await writeBackGit(index, areaA, gitDocA);
       updateAreaCounts(index, areaA);
 
       // 6. Write areaB GIT (light + landing waypoint — both at same bPos)
@@ -289,7 +290,7 @@ export function registerAdventureTools(server: McpServer): void {
       snapshotGitForUndo(gitDocB, areaB, "adventure_create_transition", `Place light ${lightBTag} + waypoint ${wpBTag}`);
       getFieldList(gitB, "Placeable List").push(lightB);
       getFieldList(gitB, "WaypointList").push(wpB);
-      await writeBackGit(index, areaB, gitDocB);
+      const nasherSyncB = await writeBackGit(index, areaB, gitDocB);
       updateAreaCounts(index, areaB);
 
       return {
@@ -319,6 +320,7 @@ export function registerAdventureTools(server: McpServer): void {
                 ...(compBA.success ? {} : { compilerOutput: compBA.output }),
               },
             },
+            ...(nasherSyncB || nasherSyncA ? { nasherSync: nasherSyncB || nasherSyncA } : {}),
           }, null, 2),
         }],
       };
@@ -679,6 +681,8 @@ export function registerAdventureTools(server: McpServer): void {
         await jsonToGff(areDoc, areEntry.filePath);
       }
 
+      const nasherSync = await syncNasherSourceForIndex(index, { reason: "adventure_apply_layout" });
+
       // Auto-repack if requested
       let repacked = false;
       if (shouldRepack) {
@@ -703,6 +707,7 @@ export function registerAdventureTools(server: McpServer): void {
             ...(featureWarnings.length > 0 ? { featureWarnings } : {}),
             ...(result.warnings.length > 0 ? { solverWarnings: result.warnings } : {}),
             ...(shouldRepack ? { repacked } : {}),
+            ...(nasherSync ? { nasherSync } : {}),
           }, null, 2),
         }],
       };

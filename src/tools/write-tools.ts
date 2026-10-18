@@ -75,6 +75,9 @@ export function registerWriteTools(server: McpServer): void {
       await erfPack(index.tempDir, outPath);
 
       const stat = await fs.stat(outPath);
+      const warnings = index.sourceContext?.type === "nasher"
+        ? [`Loaded module is backed by Nasher cache. Supported write tools auto-sync to ${index.sourceContext.workspaceRoot}; repack_module only writes the packed module file.`]
+        : [];
       return {
         content: [{
           type: "text",
@@ -82,6 +85,8 @@ export function registerWriteTools(server: McpServer): void {
             success: true,
             outputPath: outPath,
             sizeBytes: stat.size,
+            warningCount: warnings.length,
+            warnings,
           }, null, 2),
         }],
       };
