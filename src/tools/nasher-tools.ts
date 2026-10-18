@@ -163,7 +163,8 @@ async function findNewestNasherSource(root: string): Promise<{ filePath: string;
     for (const entry of entries) {
       const entryPath = path.join(dir, entry.name);
       if (entry.isDirectory()) {
-        if (!SKIP_DIRS.has(entry.name)) {
+        // Hidden dirs (.tools, .nwn-server, .venv, ...) hold tools and game data, not Nasher sources.
+        if (!SKIP_DIRS.has(entry.name) && !entry.name.startsWith(".")) {
           await walk(entryPath);
         }
         continue;
