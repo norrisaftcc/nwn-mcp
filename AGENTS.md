@@ -205,15 +205,15 @@ The **only** determining factors for tile selection from .set files are:
 - **Corner terrains:** `TopLeft`, `TopRight`, `BottomLeft`, `BottomRight`
 - **Corner heights:** `TopLeftHeight`, `TopRightHeight`, `BottomLeftHeight`, `BottomRightHeight`
 - **Edge crossers:** `Top`, `Right`, `Bottom`, `Left`
-- **Orientation:** the `.set` `Orientation` field (0/90/180/270 degrees)
+- **Orientation:** the GIT `Tile_Orientation` (0-3, 90-degree steps), applied by `getRotatedCorners`/`getRotatedCrossers`
 
 The `.set` file `[PRIMARY RULES]` and `[SECONDARY RULES]` sections are **NOT functional for tile solving**. They are toolset autotiling rules for terrain propagation when painting in the toolset. They do not restrict which tiles can be placed where. **IGNORE them entirely.**
 
-### Tile Orientation Normalization
+### Tile Corners and the `.set` Orientation Field
 
-The `.set` `Orientation` field specifies the rotation (degrees) at which the tile's corners and crossers are defined in the file. At parse time in `tileset.ts`, corners and crossers are **un-rotated by the `.set` Orientation** to normalize all tiles to GIT orientation 0. This ensures `getRotatedCorners(tile, gitOri)` returns the correct effective corners for any GIT placement orientation.
+Corners and crossers are read from the `.set` file **exactly as written**. The `.set` `Orientation` field does not rotate them: in BioWare's own multi-tile groups, adjacent tiles share matching corners only when the raw values are used (0 mismatches over 2,532 shared edges in 18 tilesets; un-rotating by `Orientation` gives 89). Do not un-rotate at parse time. `getRotatedCorners(tile, gitOri)` applies the GIT `Tile_Orientation` at placement time.
 
-The solver also **prefers tiles at their natural `.set` Orientation** — the rotation the 3D model was designed for — over rotated alternatives that produce the same corner pattern. This prevents visual artifacts from tiles whose model geometry doesn't align properly when placed at non-native orientations.
+The solver still prefers tiles whose `.set` `Orientation` equals the chosen GIT orientation. This is a heuristic from earlier versions and does not affect correctness. The `Orientation` field probably belongs to the tile's path-node data (it is non-zero only on tiles that have a `PathNode`); this is inferred from the data and not confirmed in documentation.
 
 ### Terrain Adjacency Constraint
 
@@ -233,7 +233,7 @@ You cannot skip terrains in the chain. For example, in `tno01` you must place a 
 - **Resman tools are slow.** Every invocation initializes the full resman stack. Default timeout (30s) is too short for piped operations — `resmanCatToJson()` uses 120s.
 - **Temp dir contains cache subdirs.** `resman_2da/`, `tileset_cache/`, `wok_cache/`, `blueprint_cache/` — all auto-excluded from `erfPack()` by the `isFile()` filter. Never pack these into the module.
 - **`validate_module` false positives.** Base game scripts (`nw_c2_default5`, etc.) and items (`nw_wblms001`) are resolved at runtime — filter these "missing" references.
-- **Primary/secondary rules in .set files are NOT functional and must be IGNORED.** They are toolset autotiling propagation rules, not tile placement constraints. The tile solver works entirely by matching corner terrains, corner heights, edge crossers, and the `.set` Orientation field.
+- **Primary/secondary rules in .set files are NOT functional and must be IGNORED.** They are toolset autotiling propagation rules, not tile placement constraints. The tile solver works entirely by matching corner terrains, corner heights and edge crossers, using the corners as written in the `.set` file.
 - **Height tiles excluded from solving.** Tiles with any corner height > 0 are filtered out. All solver-placed tiles are flat.
 - **Tile rotation: do NOT swap cases 1 and 3.** Case 1 = 90° CW, case 3 = 270° CW. Verified against `forwardRotate` + SVG normalization pipeline.
 - **DLG field completeness is critical.** The NWN engine silently fails to load dialogs missing standard fields. Every entry/reply MUST include `Animation`, `AnimLoop`, `Comment`, `Delay`, `Quest`, `Script`, `Sound`. Every link struct MUST include `IsChild`. The `makeEntry`/`makeReply`/`makeLink` helpers in `dialog-write-tools.ts` handle this.

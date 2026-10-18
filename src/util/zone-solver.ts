@@ -23,11 +23,11 @@
  * for tile solving. They are toolset autotiling rules for terrain propagation
  * and do not restrict tile placement. IGNORE them entirely.
  *
- * The .set Orientation field specifies the rotation at which the tile's corners
- * and crossers are defined. At parse time, corners/crossers are un-rotated to
- * GIT orientation 0 so the solver can treat all tiles uniformly. The solver
- * also prefers tiles at their natural .set Orientation (the rotation the model
- * was designed for) over rotated alternatives with matching corners.
+ * Corners and crossers are read from the .set file as written; the .set
+ * Orientation field does not rotate them (see parseTilesetFile). The solver
+ * prefers tiles whose .set Orientation equals the chosen GIT orientation over
+ * rotated alternatives with matching corners. That preference is a heuristic
+ * carried over from earlier versions; it does not affect correctness.
  */
 
 import type { TilesetInfo, TileCorners, TileCrossers } from "./tileset.js";
@@ -294,10 +294,8 @@ export function findTileByCorners(
   const noDoors = matches.filter(m => tileset.tiles[m.tileId].doors === 0);
   let pool = noDoors.length > 0 ? noDoors : matches;
 
-  // Prefer tiles at their natural .set Orientation — these tiles were designed
-  // to look correct at this rotation. Tiles at non-natural orientations have
-  // correct corner terrains but their 3D model geometry may not align properly
-  // with neighboring tiles.
+  // Prefer tiles whose .set Orientation matches this rotation (heuristic from
+  // earlier versions; corner matching above already guarantees a valid tile).
   const natural = pool.filter(m => {
     const naturalOri = Math.round(tileset.tiles[m.tileId].orientation / 90) % 4;
     return m.orientation === naturalOri;
