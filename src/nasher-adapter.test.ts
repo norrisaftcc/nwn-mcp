@@ -1,6 +1,6 @@
 import path from "path";
 import { describe, expect, it } from "vitest";
-import { buildNasherPackArgs, buildNasherUnpackArgs, parseNasherTargets } from "./nasher-adapter.js";
+import { buildNasherPackArgs, buildNasherUnpackArgs, parseNasherTargetNames, parseNasherTargets } from "./nasher-adapter.js";
 
 describe("nasher adapter command args", () => {
   it("builds pack args with optional target and clean flag", () => {
@@ -48,5 +48,12 @@ plain_target plain_target.mod
     expect(targets[0].isDefault).toBe(true);
     expect(targets[0].targetFile).toBe(path.resolve(root, "modules/demo.mod"));
     expect(targets[1].targetFile).toBe(path.resolve(root, "hak/shared.hak"));
+  });
+});
+
+describe("parseNasherTargetNames", () => {
+  it("accepts bare names and the `Target: name` lines printed by nasher 1.1.x", () => {
+    expect(parseNasherTargetNames("demo\nother\n")).toEqual(["demo", "other"]);
+    expect(parseNasherTargetNames("Target: module\n\nTarget: probe\n")).toEqual(["module", "probe"]);
   });
 });

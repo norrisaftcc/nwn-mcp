@@ -269,10 +269,10 @@ function stripAnsi(value: string): string {
   return value.replace(ANSI_ESCAPE_PATTERN, "");
 }
 
-function parseNasherTargetNames(output: string): string[] {
+export function parseNasherTargetNames(output: string): string[] {
   return stripAnsi(output)
     .split(/\r?\n/)
-    .map((line) => line.trim())
+    .map((line) => line.trim().replace(/^target:\s*/i, ""))
     .filter(Boolean);
 }
 
